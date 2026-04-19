@@ -25,18 +25,31 @@ Thales is a generalization of the autoresearch pattern (hypothesis → experimen
 
 ## State machine
 
-Thales runs in cycles. Each cycle moves through these states:
+Thales runs in cycles. Cycles are one of two types: **evidence cycles** (plan → brief → spawn → collect → synthesize) or **judge cycles** (Judge alone, no Explorers). Every 3rd cycle is a judge cycle. Stall signals also force the next cycle to be a judge cycle, regardless of position in the mod-3 schedule.
 
+**Evidence cycle states:**
 1. **plan_cycle** — Read ledger. Decide: which subagents to spawn, which branches to target, what questions to pose. Write cycle plan to ledger.
 2. **brief** — Construct one brief per subagent to spawn. Each brief follows the rules in Section "Brief construction".
 3. **spawn** — Invoke subagents in parallel (max 3 per cycle). Wait for all to return.
 4. **collect** — Read subagent outputs. Validate structure. Write raw outputs to `_scratch/thales/branches/branch-N.md` (appending).
 5. **synthesize** — If multiple branches are ripe for merging, spawn Synthesizer. Update `ledger.md` with cycle summary.
-6. **judge (every 3rd cycle or on stall signal)** — Spawn Judge. Read verdict. Act on verdict.
-7. **checkpoint (on judge trigger or every 15th cycle, whichever first)** — Pause, present state to user, wait for approval/redirect.
-8. **loop** — Back to plan_cycle unless Judge says `converged` or user aborts.
 
-Stall signals that force early Judge invocation: two consecutive cycles with zero confidence gain; Synthesizer refuses to merge; all active branches return `should_branch_further: false`.
+**Judge cycle states:**
+1. **plan_judge** — Log to ledger that this is a Judge-only cycle. No other spawns this cycle.
+2. **spawn_judge** — Invoke `thales-judge`. Sole action this cycle.
+3. **write_verdict** — On return, orchestrator writes verdict verbatim to `_scratch/thales/verdicts/judge-YYYYMMDD-HHMM-cycleN.md`. This file's existence is the proof that Judge fired. Without the file, Judge did not fire — do not proceed.
+4. **act_on_verdict** — Per verdict status, next cycle is planned accordingly. `converged` transitions to `terminal_converged`. `stalled`, `diverging`, `needs_human` transition to `checkpoint`. `exploring` or `converging` continue to next cycle.
+
+**Checkpoint state** fires on: judge trigger (stalled / diverging / needs_human), cycle count mod 15 = 0, or user request.
+
+**The cycle-mod-3 rule is non-negotiable.** If cycle_count mod 3 == 0, the orchestrator's ONLY action this cycle is a Judge spawn. Not "Judge appended to spawn list." Not "Judge in parallel with Explorers." Judge alone. This is because Judge must read the completed ledger state, not a snapshot mid-cycle. Parallel-spawning Judge with Explorers is a design violation and produces stale verdicts.
+
+**Stall signals** that force the next cycle to become a judge cycle:
+- Two consecutive evidence cycles with zero confidence change on any branch
+- Synthesizer returns `MERGE_IMPOSSIBLE`
+- All Explorers in the last evidence cycle return `should_branch_further: false`
+- Critic has flagged the same logical flaw in 2+ cycles without resolution
+- Same ruled-out entry sent to Reviver 2+ times, both returning REAFFIRM
 
 For the full state transition table, load `references/state_machine.md`.
 
@@ -48,15 +61,23 @@ Thales runs in one of two phases, tracked in `_scratch/thales/task.md`.
 - Spawn diverse personas — heavy Bridger and Challenger use
 - Accept low-confidence branches for further investigation
 - Tolerate contradictions in ledger — record both sides
-- Transition trigger: Judge reports `converging` with named leading direction
 
 **Exploit phase** (after convergence signal):
 - Heavy Prober use on the leading direction
 - Challenger still active — the leader must survive attack
 - Resolve contradictions — Synthesizer decisions carry weight
-- Transition trigger for convergence: Judge reports `converged` AND acceptance criteria met per `task.md`
 
-Phase transitions are logged to `ledger.md` with reasoning. Full phase transition preconditions in `references/state_machine.md`.
+**Phase transition is artifact-gated.** The orchestrator may NOT transition from explore to exploit based on inline reasoning. Transition is valid only if ALL hold:
+
+1. A file exists at `_scratch/thales/verdicts/judge-YYYYMMDD-HHMM-cycleN.md` for the current or immediately prior cycle.
+2. That file's `status` field is `converging` or `converged`.
+3. The verdict file was written from an actual Judge subagent return — not composed by the orchestrator. (If you are tempted to write the verdict file yourself to satisfy this check, you are violating the design. Spawn Judge.)
+
+If no valid verdict file exists, the orchestrator must spawn Judge (on the next judge cycle or immediately if none is scheduled) before transitioning phase. Inline reasoning about "we seem to be converging" is not a valid substitute.
+
+Exploit-to-converged transition requires: phase = exploit, AND latest Judge verdict status = `converged`, AND all acceptance criteria in `task.md` addressed with explicit ledger references.
+
+Phase transitions are logged to `ledger.md` with reasoning AND a reference to the gating verdict file. Full phase transition preconditions in `references/state_machine.md`.
 
 ## Subagent taxonomy
 
@@ -74,15 +95,21 @@ Seven specialist types. Orchestrator picks per cycle based on ledger state.
 
 ## Spawn decision tree
 
-Run through this each cycle in `plan_cycle` state:
+Before running the tree, check cycle type:
+
+**If `cycle_count mod 3 == 0` OR a stall signal is active: this is a judge cycle.**
+- Sole action: spawn `thales-judge`. No other spawns.
+- Skip the rest of the decision tree.
+- Proceed to brief construction for Judge, then spawn, then write verdict file.
+
+**Otherwise, this is an evidence cycle.** Run through the tree:
 
 1. **Is this the first cycle?** Spawn Bridger + Prober on the task. Skip to brief construction.
 2. **Is phase = exploit and leading direction exists?** Spawn Prober on the leader. If cycle count mod 2, also spawn Challenger on it.
 3. **Are there fewer than 2 active branches?** Spawn Bridger for a new cross-domain angle.
 4. **Are there 3+ active branches with comparable confidence?** Spawn Challenger on the weakest, not the strongest (prune by attack, not by neglect).
 5. **Did last Judge verdict say `stalled`?** Spawn Reviver on the most promising entry in `dead_ends.md`.
-6. **Is cycle count mod 3?** Append Judge to this cycle's spawn list.
-7. **Cap total spawns at 3 per cycle.** If step 1–6 selected more, drop lowest-priority first (Reviver < Critic < Synthesizer < Judge < Challenger < Prober < Bridger during explore; invert during exploit).
+6. **Cap total spawns at 3 per cycle.** If step 1–5 selected more, drop lowest-priority first (Reviver < Critic < Synthesizer < Challenger < Prober < Bridger during explore; invert during exploit).
 
 Document the cycle plan with reasoning in `ledger.md` before spawning. For edge cases, load `references/spawn_discipline.md`.
 

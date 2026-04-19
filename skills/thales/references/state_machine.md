@@ -80,10 +80,20 @@ Rare but real. All must hold for reversal:
 
 Reversal is logged prominently and prior exploit-phase branches are NOT archived — they may become active again.
 
+## Converging preconditions — full checklist
+
+Judge may only return `converging` if ALL hold:
+1. At least 4 cycles of evidence have accumulated on the candidate leading branch (cycles ON THAT BRANCH, not total cycles)
+2. Leading branch has survived at least 1 Challenger attack with verdict `unchanged` or `strengthened-through-attack` (verdict = `weakened` does NOT count)
+3. At least one other branch exists with active status — single-branch "convergence" is a red flag for premature lock-in
+4. Confidence gap of at least one level between leader (typically `high`) and second-best (typically `med` or `low`)
+
+If any condition fails, Judge returns `exploring` with a recommended action that would satisfy the missing condition (e.g., "Spawn Challenger on branch-N to test survival") — never `converging`.
+
 ## Convergence criteria — full checklist
 
 Judge may only return `converged` if ALL hold:
-1. Current phase = `exploit`
+1. Current phase = `exploit` (which requires a prior `converging` verdict file, per phase transition rules in SKILL.md)
 2. Leading direction's branch confidence = `high`
 3. Leading direction has survived at least 2 Challenger attacks across different cycles
 4. Acceptance criteria in `task.md` are addressed, each with an explicit ledger reference
@@ -91,6 +101,12 @@ Judge may only return `converged` if ALL hold:
 6. No active contradictions between the leading direction and any entry in `ruled_out.md`
 
 If any item fails, Judge returns `converging` at best, never `converged`. This is intentionally strict — false convergence is worse than an extra cycle.
+
+## Artifact-gated phase transition
+
+The orchestrator must NOT transition explore → exploit based on inline reasoning. Transition requires a file at `_scratch/thales/verdicts/judge-YYYYMMDD-HHMM-cycleN.md` with `status: converging` or `status: converged`, written from an actual Judge subagent return.
+
+If the orchestrator is tempted to write this file itself to unblock a transition, that is a design violation. The correct response is to spawn Judge (on the next scheduled judge cycle or immediately) and wait for the real verdict.
 
 ## User intervention semantics
 
