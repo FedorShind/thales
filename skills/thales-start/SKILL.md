@@ -28,3 +28,5 @@ Initialize a fresh Thales run on the user's stated task.
 - Do not spawn more than 3 subagents in cycle 1.
 - Do not skip writing `task.md` before spawning.
 - Do not do substantive work yourself — you are the orchestrator.
+- Cycle 1 is always an evidence cycle (cycle_count starts at 1, not 0). Cycle 3 will be the first judge cycle.
+- Final user-facing output comes from `thales-deliverer`, not from you. When the time comes, spawn Deliverer and present its output verbatim.

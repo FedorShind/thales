@@ -90,8 +90,9 @@ Seven specialist types. Orchestrator picks per cycle based on ledger state.
 | `thales-bridger` | yes | Find cross-domain structural analog | `source_domain`, `structural_mapping`, `testable_transfers`, `disanalogies` |
 | `thales-reviver` | yes | Re-examine a specific ruled-out direction | `original_ruling`, `new_evidence`, `revised_verdict`, `reasoning` |
 | `thales-critic` | yes | Periodic adversarial pass on reasoning quality (not the claim — that's Challenger) | `logical_flaws`, `missing_alternatives`, `overclaim_risks` |
-| `thales-judge` | yes | Every 3 cycles or on stall | `status`, `confidence`, `reasoning`, `recommended_action` |
+| `thales-judge` | yes | Every 3rd cycle (dedicated judge cycle) or on stall signal. Sole action that cycle. Writes verdict file to `verdicts/`. | `status`, `confidence`, `reasoning`, `recommended_action` |
 | `thales-synthesizer` | yes | When 2+ branches produce mergeable findings | `merged_direction`, `preserved_from_branches`, `discarded_from_branches`, `new_open_questions` |
+| `thales-deliverer` | yes | On Judge `converged`, user ABORT, or explicit delivery request. Produces the final user-facing artifact. | task-shape-dependent (top-N, recommendation, report, etc.) + required `evidence_anchors`, `dead_ends_informing_survivors`, `unresolved`, `confidence_statement` |
 
 ## Spawn decision tree
 
@@ -200,14 +201,53 @@ If the user runs `/thales-resume` in a new session: read entire ledger tree, rec
 - Reason deeply about the problem in main session. If tempted, spawn a Prober instead.
 - Spawn a subagent without a brief meeting all four requirements.
 - Summarize `ruled_out.md` or `dead_ends.md` in any brief. Always verbatim.
-- Skip a scheduled Judge cycle to "save time."
-- Declare convergence without matching ledger evidence.
+- Skip a scheduled Judge cycle to "save time." Judge cycles are mandatory at mod 3.
+- Parallel-spawn Judge with Explorers. Judge cycles are Judge-only.
+- Write a verdict file yourself to satisfy the phase-transition gate. Only actual Judge subagent output is a valid verdict.
+- Fabricate inline Judge reasoning in `ledger.md` without spawning Judge. Judge's audit trail is the `verdicts/` file, not a ledger mention.
+- Declare convergence without a `converging` or `converged` verdict file on disk for the current cycle range.
+- Transition phase based on inline reasoning. Phase transition is artifact-gated.
 - Accept a subagent output missing required structure. Reject and respawn.
 - Write to `branches/*` confidence fields directly. Synthesizer or Judge only.
 - Spawn more than 3 subagents in a single cycle.
 - Continue past a checkpoint without user input.
+- Write the final user-facing deliverable yourself. Spawn `thales-deliverer` and present its output verbatim.
+- Paraphrase, summarize, or "helpfully frame" Deliverer's output to the user. Verbatim with a brief header is the only permitted format.
 
 When one of these happens or threatens, load `references/troubleshooting.md`.
+
+## Delivery protocol
+
+The final user-facing output is produced by the `thales-deliverer` subagent, not by the orchestrator. This prevents the orchestrator from paraphrasing a rich ledger into a generic summary at delivery time.
+
+**Spawn Deliverer on these triggers:**
+- Judge returns `converged` — terminal convergence, produce the final deliverable
+- User invokes ABORT at a checkpoint — user wants whatever we have, Deliverer produces best-available with explicit "unresolved" framing
+- User explicitly asks for the final output ("give me the top-5 now", "deliver", "what's the answer")
+- User runs `/thales-deliver` (if added to commands)
+
+**Deliverer brief must include:**
+1. The task's acceptance criteria from `task.md`, verbatim
+2. An enumeration of every file in `_scratch/thales/` — Deliverer reads all of them
+3. Anti-blandness directive specific to Deliverer (see `agents/thales-deliverer.md`)
+
+**Orchestrator's job after Deliverer returns:**
+- Write a brief covering note (2-3 sentences max) stating: cycle count, branch count, phase at delivery, any salient caveat (e.g., "Delivered on ABORT with 2 branches unresolved")
+- Present Deliverer's output verbatim below the covering note
+- Do NOT paraphrase, summarize, truncate, or re-format the Deliverer output
+- Do NOT add your own analysis or framing around it
+- Do NOT ask the user if they want a shorter version unless they ask first
+
+The covering note header format:
+
+```
+## Thales delivery — cycle N
+<2-3 sentence orchestrator note: cycle count, phase, branches, caveats>
+
+---
+
+<Deliverer output verbatim>
+```
 
 ## Examples
 
