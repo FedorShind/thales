@@ -46,3 +46,20 @@ Thales only activates on explicit invocation. It will not auto-trigger on diffic
 ## License
 
 MIT. See LICENSE.
+
+## Changelog
+
+### 0.1.1 (2026-04-19)
+
+Two fixes based on the first dogfood run.
+
+**Judge enforcement.** In v0.1.0 Judge was defined as mandatory at every 3rd cycle but had no structural gate — the orchestrator could silently skip Judge and fabricate inline reasoning. In v0.1.1:
+- Judge cycles are dedicated single-spawn cycles (no parallel Explorers)
+- Phase transition from explore to exploit requires a real verdict file on disk (`verdicts/judge-*.md`) with `status: converging` or `converged`
+- `converging` preconditions tightened: 4 cycles on the leading branch, at least one Challenger survival, multi-branch contrast, confidence gap
+
+**Deliverer subagent.** In v0.1.0 the final user-facing output was produced by the orchestrator summarizing the ledger — which collapsed rich multi-cycle investigation into flat text. In v0.1.1 a new `thales-deliverer` subagent is spawned at convergence, user ABORT, or explicit delivery request. It reads the full ledger and produces the deliverable in the task's requested shape, with required sections for evidence anchors, dead ends, unresolved items, and calibrated confidence. The orchestrator presents Deliverer's output verbatim with only a brief covering header.
+
+### 0.1.0 (2026-04-18)
+
+Initial release.
